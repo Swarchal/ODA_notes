@@ -62,7 +62,24 @@ body = f"""
       </s:Body>
     </s:Envelope>
 """
-return requests.post(
-    url=f"{HOST}/ODA/OdaService.asmx", headers=headers, data=body
-)
+requests.post(url=f"{HOST}/ODA/OdaService.asmx", headers=headers, data=body)
+```
+
+## Logging out
+
+```python
+headers = {
+    "Content-Type": "text/xml; charset=utf-8",
+    "SOAPAction": "http://www.perkinelmer.com/PEHH.ODA/Logout",
+    "Cookie": f"ASP.NET_SessionId={session_id}",
+}
+body = """
+    <s:Envelope
+    xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+      <s:Body>
+        <Logout xmlns="http://www.perkinelmer.com/PEHH.ODA" />
+      </s:Body>
+    </s:Envelope>
+"""
+requests.post(url=f"{HOST}/ODA/OdaService.asmx", headers=headers, data=body)
 ```
