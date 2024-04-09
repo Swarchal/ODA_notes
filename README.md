@@ -1,94 +1,68 @@
 # Harmony ODA API
 
-The aim of this is to figure out how to fetch metadata from Harmony via the ODA api.
-This might just be notes, might have scripts once I've figured more of it out.
-
 PerkinElmer/Revvity supply no documentation on using the ODA (Opera database API).
 It looks like Harmony is sending API calls over HTTP, so it is possible to
 inspect how Harmony uses the ODA by inspecting the network traffic on a Harmony
-computer with WireShark or similar.
+session.
 
-Some of the requests are authenticated with a Session ID. I don't know how
-these Session IDs are generated or how long they are valid for. In theory it
-should be possible to sniff the Session ID and then send API calls query the
-ODA through an external script.
+It seems to work via SOAP, sending XML bodies with requests for data. Quite
+often the response is then a URL to second as a second request which
+returns the requested data, again as XML.
 
-## What I've found so far:
 
-### Fetching images
-Same as in the indexfile.
-This doesn't require  authentication.
-```http
-GET /ODA/Images/C/{signature}/{imgID?}.tiff
+## Generating a session ID
+
+Many of the requests require a session ID. You can generated your own
+valid session ID through a post request to `ODA/ODAService.xml`.
+
+```python
+header = {"Content-Type": "text/xml; charset=utf8"}
+body = """
+    <s:Envelope
+      xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+      <s:Body>
+        <GetSessionID
+          xmlns="http://www.perkinelmer.com/PEHH.ODA"
+          xmlns:a="http://schemas.datacontract.org/2004/07/PEHH.OdaClient"
+          xmlns:i="http://www.w3.org/2001/XMLSchema-instance" />
+      </s:Body>
+    </s:Envelope>
+"""
+response = requests.post(url=f"{HOST}/ODA/ODAService.asmx", headers=headers, data=body)
+
+# parse session ID from response text or header
 ```
 
-```
-User-Agent: Acapella/5.2\r\n
-```
+The session ID is then contained within the returned xml, as well as in the headers
+under "Set-Cookie".
 
-### Fetching image analysis metadata
-```http
-GET /ODA/XML/{signature}.xml
-```
+The session ID seems remain valid for at least several days.
 
-This header is present in the captured GET requests, but seems to work without:
-```
-Cookie: ASP.NET_SessionId={sessionID}\r\n
-User-Agent: OdaClient\r\n
-```
 
-This returns a Harmony Acapella text (non-standard xml) file. Many of the
-strings as zlib base64 encoded. Seems to be missing a lot of basic metadata
-such as the analysis name and timestamps, though it's difficult to grep for
-anything with them being encoded.
+## Logging in
 
-### Fetching ???
-It looks like it first makes multiple POST requests to
-```http
-POST /ODA/OdaService.asmx
-```
-before any get requests with a `SessionID`. The POST requests contain the
-signature etc. I guess the session ID is used to track which signature is
-relevant for any get requests based on the `SessionID` rather than the signature.
+A number of metadata requests require a logged in user. This can be done after
+obtaining a session ID.
 
-```http
-GET /ODA/S({SessionID})/Buffers/ObjectBaseData
+```python
+headers = {
+    "Content-Type": "text/xml; charset=utf-8",
+    "Cookie": f"ASP.NET_SessionId={session_id}",
+}
+body = f"""
+    <s:Envelope
+    xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+      <s:Body>
+        <Login
+          xmlns="http://www.perkinelmer.com/PEHH.ODA"
+          xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+            <user>{user}</user>
+            <passwd>{password}</passwd>
+        </Login>
+      </s:Body>
+    </s:Envelope>
+"""
+return requests.post(
+    url=f"{HOST}/ODA/OdaService.asmx", headers=headers, data=body
+)
 ```
-
-```http
-GET /ODA/S({SessionID})/Buffers/ObjectDisplayData
-```
-
-```http
-GET /ODA/S({SessionID})/Buffers/Keywords
-```
-
-```http
-GET /ODA/S({SessionID})/Buffers/KeywordValues
-```
-
-```http
-GET /ODA/S({SessionID})/Buffers/KWBNextLevel
-```
-
-```http
-GET /ODA/S({SessionID})/Buffers/KeywordTypeDescriptions
-```
-
-```http
-GET /ODA/S({SessionID})/Buffers/GetComment
-```
-
-```
-Cookie: ASP.NET_SessionId={sessionID}\r\n
-User-Agent: OdaClient\r\n
-```
-
-### Posting ???
-Including a header containing a session ID as a cookie.
-```http
-POST /ODA/OdaService.asmx
-```
-
-POST requests to `/ODA/OdaService.asmx` appears to be required for later GET
-requests, which only contain the `SessionID`.
